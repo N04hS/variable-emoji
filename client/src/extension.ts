@@ -10,7 +10,6 @@ import {
 	window,
 	DecorationOptions,
 	Diagnostic,
-	DiagnosticSeverity,
 	TextEditorDecorationType
 } from 'vscode';
 
@@ -22,10 +21,10 @@ import {
 } from 'vscode-languageclient/node';
 
 let client: LanguageClient;
-const EMOJI : string = /*"👎";*/"🤏";
+
 const decorationType: TextEditorDecorationType = window.createTextEditorDecorationType({
 	after: {
-		contentText: EMOJI
+		contentText: '🤏'
 	}
 });
 
@@ -54,7 +53,6 @@ export function activate(context: ExtensionContext) {
 		synchronize: {
 			// Notify the server about file changes to '.clientrc files contained in the workspace
 			fileEvents: workspace.createFileSystemWatcher('**/.clientrc'),
-			
 		}
 	};
 
@@ -74,26 +72,26 @@ export function activate(context: ExtensionContext) {
 	client.start();
 }
 
-export function decorateSymbols(diagnostics: Diagnostic[]) {
+export function decorateSymbols(diagnostics: Diagnostic[]): void {
 	const editor = window.activeTextEditor;
+	
+	// return if no active editor
 	if (!editor) {
 		return;
 	}
 	
 	// remove existing decorations
-	editor.setDecorations(decorationType, []);
-	
-	// turn diagnostics into decorations
 	const decorations: DecorationOptions[] = [];
-	diagnostics.forEach(symbol => {
-		// TODO identify emoji diagnostics via different means
-		if (symbol.severity != DiagnosticSeverity.Information && symbol.source === 'Language Server') {
-			decorations.push({
-				range: symbol.range
-			});
-		}
+	editor.setDecorations(decorationType, decorations);
+	
+	// create decoration for each diagnostic from language server
+	diagnostics.forEach(diag => {
+		decorations.push({
+			range: diag.range
+		});
 	});
 
+	// display decorationen with defined decoration type
 	editor.setDecorations(decorationType, decorations);
 }
 

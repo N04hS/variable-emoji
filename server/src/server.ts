@@ -28,8 +28,8 @@ const connection = createConnection(ProposedFeatures.all);
 // Create a simple text document manager.
 const documents: TextDocuments<TextDocument> = new TextDocuments(TextDocument);
 
-const SCOPE_TO_NAME_RATIO: number = -4;
-const GLOBAL_MIN_LENGTH: number = 10;
+const MIN_LENGTH: number = 1;		// minimum length of variable at highest depth
+const LENGTH_PER_DEPTH: number = 3;	// characters needed per added depth level
 
 let diagnostics : Diagnostic[] = [];
 
@@ -92,9 +92,20 @@ async function parseTextDocument(textDocument: TextDocument): Promise<void> {
 	let variables: Symbol[] = [];
 	diagnostics = [];
 	
+	// get AST from document
 	const sourceFile = tsc.createSourceFile(textDocument.uri, textDocument.getText(), 
 							tsc.ScriptTarget.Latest, true);
+	// traverse tree and save variable identifiers in list
 	visitNode(new Symbol(sourceFile, null), variables);
+	
+	// get max depth of of tree
+	let maxDepth = 0;
+	for (const v of variables) {
+		const depth = v.getDepth();
+		if (depth > maxDepth) {
+			maxDepth = depth;
+		}
+	}
 
 	for (const v of variables) {
 		if (v.parent?.node.kind === tsc.SyntaxKind.VariableDeclaration) {
@@ -103,11 +114,11 @@ async function parseTextDocument(textDocument: TextDocument): Promise<void> {
 			let scopeDepth: number = v.getDepth() - 1;
 
 			/* 
-			 * f(x) = kx + d 
-			 * d = 10 ... minimum length at global scope
-			 * k = -4 ... ratio of characters per scope depth
+			 * on max depth, length should be atleast MIN_LENGTH (1)
+			 * per level higher, add LENGHT_PER_DEPTH (3) characters
 			*/
-			let minLength: number = (SCOPE_TO_NAME_RATIO * scopeDepth) + GLOBAL_MIN_LENGTH;
+			let depthDiff: number = maxDepth - scopeDepth;
+			let minLength: number = MIN_LENGTH + (depthDiff * LENGTH_PER_DEPTH);
 
 			if (varnameLength < minLength) {
 				diagnostics.push({
@@ -126,12 +137,11 @@ async function parseTextDocument(textDocument: TextDocument): Promise<void> {
 	connection.sendDiagnostics({ uri: textDocument.uri, diagnostics });
 
 	// send notification to decorate diagnostics
-	// connection.sendNotification("decorateSymbols", diagnostics);
+	connection.sendNotification("decorateSymbols", diagnostics);
 }
 
 function visitNode(symbol: Symbol, nodes: Symbol[]): void {
-	if (symbol.node.kind === tsc.SyntaxKind.VariableDeclaration 
-		|| symbol.node.kind === tsc.SyntaxKind.PropertyDeclaration)
+	if (symbol.node.kind === tsc.SyntaxKind.VariableDeclaration)
 	{
 		for (var child of symbol.node.getChildren()) {
 			if (child.kind === tsc.SyntaxKind.Identifier) {
