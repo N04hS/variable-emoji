@@ -109,27 +109,43 @@ async function parseTextDocument(textDocument: TextDocument): Promise<void> {
 
 	for (const v of variables) {
 		if (v.parent?.node.kind === tsc.SyntaxKind.VariableDeclaration) {
-			let varname: string = v.node.getText();
-			let varnameLength: number = varname.length;
-			let scopeDepth: number = v.getDepth() - 1;
+			let ancestor: Symbol | null = v.parent;
+			let scope: Symbol | null = null;
 
-			/* 
-			 * on max depth, length should be atleast MIN_LENGTH (1)
-			 * per level higher, add LENGHT_PER_DEPTH (3) characters
-			*/
-			let depthDiff: number = maxDepth - scopeDepth;
-			let minLength: number = MIN_LENGTH + (depthDiff * LENGTH_PER_DEPTH);
+			while (ancestor !== null) {
+				if (ancestor.node.kind === tsc.SyntaxKind.Block
+					|| ancestor.node.kind === tsc.SyntaxKind.SourceFile
+				) {
+					/* block found */
+					scope = ancestor;
+					break;
+				}
 
-			if (varnameLength < minLength) {
-				diagnostics.push({
-					severity: DiagnosticSeverity.Information,
-					range: {
-						start: textDocument.positionAt(v.node.getStart()),
-						end: textDocument.positionAt(v.node.getEnd())
-					},
-					message: `recommended name length: ${minLength}`,
-					source: 'Language Server'
-				});
+				ancestor = ancestor.parent;
+			}
+			
+			if (scope !== null) {
+				let scopeStartPos = textDocument.positionAt(scope.node.getStart());
+				let scopeEndPos = textDocument.positionAt(scope.node.getEnd());
+				let scopeLines: number = scopeEndPos.line - scopeStartPos.line;
+				
+				let varname: string = v.node.getText();
+				let varnameLength: number = varname.length;
+
+				/* one character per 4 lines */
+				let minLength: number = 1 + Math.floor(scopeLines * 0.25);
+
+				if (varnameLength < minLength) {
+					diagnostics.push({
+						severity: DiagnosticSeverity.Information,
+						range: {
+							start: textDocument.positionAt(v.node.getStart()),
+							end: textDocument.positionAt(v.node.getEnd())
+						},
+						message: `recommended name length: ${minLength}`,
+						source: 'Language Server'
+					});
+				}
 			}
 		}
 	}
